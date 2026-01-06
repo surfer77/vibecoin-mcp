@@ -441,7 +441,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 isError: true,
               };
             }
-            const collectResult = await collectFees(password, API_BASE_URL);
+            const collectResult = await collectFees(password, GRAPHQL_URL);
             return {
               content: [
                 { type: "text", text: safeStringify(collectResult) },
