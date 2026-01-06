@@ -10,9 +10,10 @@ import {
 
 import { createWallet, getWalletAddress, getBalance, transfer, collectFees } from "./lib/wallet.js";
 import { launchCoin, getApiStatus } from "./lib/launcher.js";
+import { getVestingInfo, claimVestedTokens } from "./lib/vesting.js";
 
-// API endpoints
-const API_BASE_URL = process.env.LAUNCHER_API_URL || 'http://localhost:3001';
+// API endpoints - all on the Ponder indexer server
+const API_BASE_URL = process.env.LAUNCHER_API_URL || 'http://localhost:42069';
 const GRAPHQL_URL = process.env.GRAPHQL_URL || 'http://localhost:42069/graphql';
 
 // Helper to query GraphQL
@@ -181,8 +182,8 @@ What happens:
 Requirements:
 - Must have a wallet (use wallet tool first)
 - Password to sign the launch transaction
-- Coin name (1-32 characters)
-- Trading symbol (2-8 characters, e.g., DOGE, PEPE)
+- Coin name
+- Trading symbol (e.g., DOGE, PEPE)
 
 Optional (but encouraged):
 - URL: Project website
@@ -206,11 +207,11 @@ Make it clear which fields are optional and that they can skip them by leaving t
         },
         name: {
           type: "string",
-          description: "Coin name (1-32 characters)",
+          description: "Coin name",
         },
         symbol: {
           type: "string",
-          description: "Trading symbol (2-8 characters)",
+          description: "Trading symbol",
         },
         url: {
           type: "string",
@@ -222,7 +223,7 @@ Make it clear which fields are optional and that they can skip them by leaving t
         },
         description: {
           type: "string",
-          description: "Brief description of your project (optional but encouraged, max 500 characters)",
+          description: "Brief description of your project (optional but encouraged)",
         },
       },
       required: ["password", "name", "symbol"],
@@ -270,6 +271,40 @@ Actions:
         },
       },
       required: [],
+    },
+  },
+  {
+    name: "vesting",
+    description: `Check and claim your vested tokens from coin launches.
+
+When you launch a coin, you receive 49% of the total supply vested over 6 months. Use this tool to:
+- Check how many tokens have vested and are available to claim
+- Check how many tokens are still locked
+- Claim your vested tokens
+
+Actions:
+- check: View vesting status for a specific token (requires tokenAddress)
+- claim: Claim all available vested tokens (requires tokenAddress and password)
+
+The vesting schedule releases tokens linearly over 6 months from the coin launch date.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["check", "claim"],
+          description: "Action to perform: check (view vesting status) or claim (claim vested tokens)",
+        },
+        tokenAddress: {
+          type: "string",
+          description: "The token contract address to check or claim from",
+        },
+        password: {
+          type: "string",
+          description: "Wallet password (required for: claim)",
+        },
+      },
+      required: ["action", "tokenAddress"],
     },
   },
 ];
@@ -785,6 +820,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }],
             isError: true,
           };
+        }
+      }
+
+      case "vesting": {
+        const { action, tokenAddress, password } = args;
+
+        if (!tokenAddress) {
+          return {
+            content: [{
+              type: "text",
+              text: safeStringify({
+                success: false,
+                error: "tokenAddress is required. Use the 'listings' tool with action='mine' to see your launched tokens."
+              })
+            }],
+            isError: true,
+          };
+        }
+
+        switch (action) {
+          case "check": {
+            const result = await getVestingInfo(tokenAddress);
+            return {
+              content: [{ type: "text", text: safeStringify(result) }],
+            };
+          }
+          case "claim": {
+            if (!password) {
+              return {
+                content: [{
+                  type: "text",
+                  text: safeStringify({
+                    success: false,
+                    error: "Password required to claim vested tokens"
+                  })
+                }],
+                isError: true,
+              };
+            }
+            const result = await claimVestedTokens(password, tokenAddress);
+            return {
+              content: [{ type: "text", text: safeStringify(result) }],
+            };
+          }
+          default:
+            return {
+              content: [{
+                type: "text",
+                text: safeStringify({ error: `Unknown vesting action: ${action}. Use 'check' or 'claim'.` })
+              }],
+              isError: true,
+            };
         }
       }
 
