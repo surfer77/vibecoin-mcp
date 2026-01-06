@@ -33,8 +33,10 @@ async function queryGraphQL(query, variables = {}) {
 // Format wei to ETH with nice display
 function formatEth(wei) {
   if (!wei) return '0 ETH';
-  const eth = Number(BigInt(wei)) / 1e18;
-  if (eth === 0) return '0 ETH';
+  // Safely convert BigInt to number by using string conversion
+  const weiStr = typeof wei === 'bigint' ? wei.toString() : String(wei);
+  const eth = parseFloat(weiStr) / 1e18;
+  if (eth === 0 || isNaN(eth)) return '0 ETH';
   if (eth < 0.0001) return `${eth.toExponential(2)} ETH`;
   if (eth < 1) return `${eth.toFixed(4)} ETH`;
   return `${eth.toFixed(2)} ETH`;
@@ -56,7 +58,9 @@ function safeStringify(obj, indent = 2) {
 // Format timestamp to readable date
 function formatTimestamp(ts) {
   if (!ts) return 'Never';
-  const date = new Date(Number(ts) * 1000);
+  // Handle BigInt timestamps safely
+  const tsNum = typeof ts === 'bigint' ? parseInt(ts.toString(), 10) : Number(ts);
+  const date = new Date(tsNum * 1000);
   const now = new Date();
   const diffMs = now - date;
   const diffMins = Math.floor(diffMs / 60000);
@@ -73,7 +77,9 @@ function formatTimestamp(ts) {
 // Format price (stored as scaled integer)
 function formatPrice(price) {
   if (!price) return '$0.00';
-  const p = Number(BigInt(price)) / 1e18;
+  // Safely convert BigInt to number by using string conversion
+  const priceStr = typeof price === 'bigint' ? price.toString() : String(price);
+  const p = parseFloat(priceStr) / 1e18;
   if (p === 0) return '$0.00';
   if (p < 0.000001) return `$${p.toExponential(2)}`;
   if (p < 0.01) return `$${p.toFixed(6)}`;
@@ -81,14 +87,30 @@ function formatPrice(price) {
   return `$${p.toFixed(2)}`;
 }
 
+// Format USD value for display
+function formatUsd(value) {
+  if (!value) return '$0.00';
+  const valStr = typeof value === 'bigint' ? value.toString() : String(value);
+  const v = parseFloat(valStr);
+  if (v === 0 || isNaN(v)) return '$0.00';
+  if (v < 0.01) return `$${v.toFixed(6)}`;
+  if (v < 1) return `$${v.toFixed(4)}`;
+  if (v < 1000) return `$${v.toFixed(2)}`;
+  if (v < 1000000) return `$${(v / 1000).toFixed(2)}K`;
+  return `$${(v / 1000000).toFixed(2)}M`;
+}
+
 // Format a token for nice display
 function formatToken(token, index = null) {
   const prefix = index !== null ? `${index + 1}. ` : '';
+  const nameDisplay = token.name && token.symbol
+    ? `${token.name} (${token.symbol})`
+    : `${token.id.slice(0, 10)}...${token.id.slice(-8)}`;
+
   const lines = [
-    `${prefix}Token: ${token.id.slice(0, 10)}...${token.id.slice(-8)}`,
-    `   Creator: ${token.creator.slice(0, 10)}...${token.creator.slice(-8)}`,
-    `   Volume: ${formatEth(token.totalVolumeEth)} | Swaps: ${token.totalSwapCount}`,
-    `   Price: ${formatPrice(token.currentPrice)}`,
+    `${prefix}${nameDisplay}`,
+    `   Volume: ${formatUsd(token.totalVolumeUsd)} | Swaps: ${token.totalSwapCount}`,
+    `   Price: ${formatUsd(token.currentPriceUsd)}`,
     `   Last Trade: ${formatTimestamp(token.lastSwapTimestamp)}`,
     `   Launched: ${formatTimestamp(token.launchTimestamp)}`,
   ];
@@ -547,7 +569,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const creatorAddress = walletResult.address.toLowerCase();
 
         try {
-          // Query tokens created by this user with fee data
+          // Query tokens created by this user with fee data, plus ETH price
           const data = await queryGraphQL(`
             query MyFees($creator: String!) {
               tokens(
@@ -558,16 +580,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               ) {
                 items {
                   id
+                  name
+                  symbol
                   totalEthFeesAccumulated
                   totalFeesCollected
                   totalSwapCount
-                  totalVolumeEth
+                  totalVolumeUsd
                 }
+              }
+              ethPriceCache(id: "current") {
+                priceUsd
+                lastUpdated
               }
             }
           `, { creator: creatorAddress });
 
           const tokens = data.tokens?.items || [];
+          const ethPrice = data.ethPriceCache?.priceUsd || 0;
+
+          // Helper to convert ETH (wei) to USD
+          const ethToUsd = (weiAmount) => {
+            if (!weiAmount || !ethPrice) return null;
+            const weiStr = typeof weiAmount === 'bigint' ? weiAmount.toString() : String(weiAmount);
+            const eth = parseFloat(weiStr) / 1e18;
+            return eth * ethPrice;
+          };
 
           // Calculate totals
           let totalAccumulated = BigInt(0);
@@ -581,16 +618,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             totalAccumulated += accumulated;
             totalCollected += collected;
-            totalSwaps += Number(token.totalSwapCount || 0);
+            // Safely convert BigInt to number
+            const swapCount = token.totalSwapCount || 0;
+            totalSwaps += typeof swapCount === 'bigint' ? parseInt(swapCount.toString(), 10) : Number(swapCount);
 
-            return {
+            const tokenName = token.name && token.symbol
+              ? `${token.name} (${token.symbol})`
+              : token.id;
+
+            const result = {
+              token: tokenName,
               tokenAddress: token.id,
               totalEarned: formatEth(accumulated.toString()),
               collected: formatEth(collected.toString()),
               pending: formatEth(pending.toString()),
               swapCount: token.totalSwapCount,
-              volume: formatEth(token.totalVolumeEth)
+              volume: formatUsd(token.totalVolumeUsd)
             };
+
+            // Add USD values if ETH price is available
+            if (ethPrice) {
+              result.totalEarnedUsd = formatUsd(ethToUsd(accumulated));
+              result.collectedUsd = formatUsd(ethToUsd(collected));
+              result.pendingUsd = formatUsd(ethToUsd(pending));
+            }
+
+            return result;
           });
 
           const totalPending = totalAccumulated - totalCollected;
@@ -605,6 +658,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               coins: coinBreakdown,
               totalCoins: tokens.length
             };
+            if (ethPrice) {
+              result.ethPriceUsd = ethPrice;
+            }
           } else {
             result = {
               success: true,
@@ -618,6 +674,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               totalTrades: totalSwaps,
               note: "Use action='by-coin' to see per-coin breakdown. Use wallet collect-fees to claim pending fees."
             };
+            // Add USD values if ETH price is available
+            if (ethPrice) {
+              result.totalEarnedUsd = formatUsd(ethToUsd(totalAccumulated));
+              result.totalCollectedUsd = formatUsd(ethToUsd(totalCollected));
+              result.pendingFeesUsd = formatUsd(ethToUsd(totalPending));
+              result.ethPriceUsd = ethPrice;
+            }
           }
 
           return {
@@ -670,12 +733,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   ) {
                     items {
                       id
+                      name
+                      symbol
                       creator
                       launchTimestamp
-                      totalVolumeEth
+                      totalVolumeUsd
                       totalSwapCount
                       lastSwapTimestamp
-                      currentPrice
+                      currentPriceUsd
                       totalEthFeesAccumulated
                       totalFeesCollected
                     }
@@ -693,18 +758,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               const data = await queryGraphQL(`
                 query TopTokens {
                   tokens(
-                    orderBy: "totalVolumeEth"
+                    orderBy: "totalVolumeUsd"
                     orderDirection: "desc"
                     limit: 10
                   ) {
                     items {
                       id
+                      name
+                      symbol
                       creator
                       launchTimestamp
-                      totalVolumeEth
+                      totalVolumeUsd
                       totalSwapCount
                       lastSwapTimestamp
-                      currentPrice
+                      currentPriceUsd
                     }
                   }
                 }
@@ -735,12 +802,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 query SearchToken($id: String!) {
                   token(id: $id) {
                     id
+                    name
+                    symbol
                     creator
                     launchTimestamp
-                    totalVolumeEth
+                    totalVolumeUsd
                     totalSwapCount
                     lastSwapTimestamp
-                    currentPrice
+                    currentPriceUsd
                     totalEthFeesAccumulated
                     totalFeesCollected
                   }
@@ -766,12 +835,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   ) {
                     items {
                       id
+                      name
+                      symbol
                       creator
                       launchTimestamp
-                      totalVolumeEth
+                      totalVolumeUsd
                       totalSwapCount
                       lastSwapTimestamp
-                      currentPrice
+                      currentPriceUsd
                     }
                   }
                 }
