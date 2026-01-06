@@ -8,11 +8,90 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { createWallet, getWalletAddress, getBalance, transfer, collectFees } from "./lib/wallet.js";
-import { getMyFees } from "./lib/fees.js";
 import { launchCoin, getApiStatus } from "./lib/launcher.js";
 
-// API endpoint
+// API endpoints
 const API_BASE_URL = process.env.LAUNCHER_API_URL || 'http://localhost:3001';
+const GRAPHQL_URL = process.env.GRAPHQL_URL || 'http://localhost:42069/graphql';
+
+// Helper to query GraphQL
+async function queryGraphQL(query, variables = {}) {
+  const response = await fetch(GRAPHQL_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables }),
+  });
+  const result = await response.json();
+  if (result.errors) {
+    throw new Error(result.errors[0].message);
+  }
+  return result.data;
+}
+
+// Format wei to ETH with nice display
+function formatEth(wei) {
+  if (!wei) return '0 ETH';
+  const eth = Number(BigInt(wei)) / 1e18;
+  if (eth === 0) return '0 ETH';
+  if (eth < 0.0001) return `${eth.toExponential(2)} ETH`;
+  if (eth < 1) return `${eth.toFixed(4)} ETH`;
+  return `${eth.toFixed(2)} ETH`;
+}
+
+// JSON replacer to handle BigInt serialization
+function jsonReplacer(key, value) {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  return value;
+}
+
+// Safe JSON stringify that handles BigInt
+function safeStringify(obj, indent = 2) {
+  return JSON.stringify(obj, jsonReplacer, indent);
+}
+
+// Format timestamp to readable date
+function formatTimestamp(ts) {
+  if (!ts) return 'Never';
+  const date = new Date(Number(ts) * 1000);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+// Format price (stored as scaled integer)
+function formatPrice(price) {
+  if (!price) return '$0.00';
+  const p = Number(BigInt(price)) / 1e18;
+  if (p === 0) return '$0.00';
+  if (p < 0.000001) return `$${p.toExponential(2)}`;
+  if (p < 0.01) return `$${p.toFixed(6)}`;
+  if (p < 1) return `$${p.toFixed(4)}`;
+  return `$${p.toFixed(2)}`;
+}
+
+// Format a token for nice display
+function formatToken(token, index = null) {
+  const prefix = index !== null ? `${index + 1}. ` : '';
+  const lines = [
+    `${prefix}Token: ${token.id.slice(0, 10)}...${token.id.slice(-8)}`,
+    `   Creator: ${token.creator.slice(0, 10)}...${token.creator.slice(-8)}`,
+    `   Volume: ${formatEth(token.totalVolumeEth)} | Swaps: ${token.totalSwapCount}`,
+    `   Price: ${formatPrice(token.currentPrice)}`,
+    `   Last Trade: ${formatTimestamp(token.lastSwapTimestamp)}`,
+    `   Launched: ${formatTimestamp(token.launchTimestamp)}`,
+  ];
+  return lines.join('\n');
+}
 
 // Create server instance
 const server = new Server(
@@ -70,10 +149,6 @@ Actions:
           enum: ["create", "get", "balance", "transfer", "collect-fees"],
           description: "Action to perform",
         },
-        userId: {
-          type: "string",
-          description: "Your unique user ID",
-        },
         password: {
           type: "string",
           description: "Wallet password (required for: create, transfer, collect-fees)",
@@ -87,7 +162,7 @@ Actions:
           description: "Amount in ETH (required for: transfer)",
         },
       },
-      required: ["action", "userId"],
+      required: ["action"],
     },
   },
   {
@@ -113,10 +188,6 @@ Optional (but encouraged):
     inputSchema: {
       type: "object",
       properties: {
-        userId: {
-          type: "string",
-          description: "Your user ID",
-        },
         password: {
           type: "string",
           description: "Wallet password to sign the launch",
@@ -142,7 +213,7 @@ Optional (but encouraged):
           description: "Brief description of your project (optional but encouraged, max 500 characters)",
         },
       },
-      required: ["userId", "password", "name", "symbol"],
+      required: ["password", "name", "symbol"],
     },
   },
   {
@@ -160,12 +231,8 @@ Actions:
           enum: ["summary", "by-coin"],
           description: "View type: summary (totals) or by-coin (per-coin breakdown)",
         },
-        userId: {
-          type: "string",
-          description: "Your user ID",
-        },
       },
-      required: ["userId"],
+      required: [],
     },
   },
   {
@@ -173,25 +240,21 @@ Actions:
     description: `Browse coins launched on Billionaire.
 
 Actions:
-- all: View all launched coins
-- mine: View only your launched coins (requires userId)
-- top: View top 10 coins by market cap
-- search: Search coins by name or symbol`,
+- all: View most active tokens in the past 24 hours (default)
+- mine: View only your launched coins
+- top: View top 10 coins by trading volume
+- search: Search coins by token address`,
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
           enum: ["all", "mine", "top", "search"],
-          description: "Browse mode: all, mine (your coins), top (by market cap), search",
-        },
-        userId: {
-          type: "string",
-          description: "Your user ID (required for: mine)",
+          description: "Browse mode: all (most active 24h), mine (your coins), top (by volume), search (by address)",
         },
         query: {
           type: "string",
-          description: "Search term (required for: search)",
+          description: "Token address to search for (required for: search)",
         },
       },
       required: [],
@@ -264,12 +327,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const result = infoData[action] || infoData.platform;
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
       case "wallet": {
-        const { action, userId, password } = args;
+        const { action, password } = args;
 
         switch (action) {
           case "create": {
@@ -278,39 +341,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: JSON.stringify(
-                      {
+                    text: safeStringify({
                         success: false,
                         error: "Password required to create wallet. This password encrypts your wallet where fees will be sent. IMPORTANT: Choose a password you will NEVER forget - there is NO recovery option. If you lose your password, your wallet and funds are gone forever!",
-                      },
-                      null,
-                      2
-                    ),
+                      }),
                   },
                 ],
                 isError: true,
               };
             }
-            const result = await createWallet(userId, password);
+            const result = await createWallet(password);
             return {
               content: [
-                { type: "text", text: JSON.stringify(result, null, 2) },
+                { type: "text", text: safeStringify(result) },
               ],
             };
           }
           case "get": {
-            const result = getWalletAddress(userId);
+            const result = getWalletAddress();
             return {
               content: [
-                { type: "text", text: JSON.stringify(result, null, 2) },
+                { type: "text", text: safeStringify(result) },
               ],
             };
           }
           case "balance": {
-            const result = await getBalance(userId);
+            const result = await getBalance();
             return {
               content: [
-                { type: "text", text: JSON.stringify(result, null, 2) },
+                { type: "text", text: safeStringify(result) },
               ],
             };
           }
@@ -320,14 +379,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: JSON.stringify(
-                      {
+                    text: safeStringify({
                         success: false,
                         error: "Password required to transfer funds",
-                      },
-                      null,
-                      2
-                    ),
+                      }),
                   },
                 ],
                 isError: true,
@@ -339,27 +394,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: JSON.stringify(
-                      {
+                    text: safeStringify({
                         success: false,
                         error: "toAddress and amount are required for transfer",
-                      },
-                      null,
-                      2
-                    ),
+                      }),
                   },
                 ],
                 isError: true,
               };
             }
             // Return warning first, requiring confirmation
-            const transferResult = await transfer(userId, password, toAddress, amount);
+            const transferResult = await transfer(password, toAddress, amount);
             if (transferResult.success) {
               transferResult.warning = "⚠️ This transfer is IRREVERSIBLE. The funds have been sent and cannot be recovered.";
             }
             return {
               content: [
-                { type: "text", text: JSON.stringify(transferResult, null, 2) },
+                { type: "text", text: safeStringify(transferResult) },
               ],
             };
           }
@@ -369,23 +420,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: JSON.stringify(
-                      {
+                    text: safeStringify({
                         success: false,
                         error: "Password required to collect fees",
-                      },
-                      null,
-                      2
-                    ),
+                      }),
                   },
                 ],
                 isError: true,
               };
             }
-            const collectResult = await collectFees(userId, password, API_BASE_URL);
+            const collectResult = await collectFees(password, API_BASE_URL);
             return {
               content: [
-                { type: "text", text: JSON.stringify(collectResult, null, 2) },
+                { type: "text", text: safeStringify(collectResult) },
               ],
             };
           }
@@ -394,11 +441,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify(
-                    { error: `Unknown action: ${action}` },
-                    null,
-                    2
-                  ),
+                  text: safeStringify({ error: `Unknown action: ${action}` }),
                 },
               ],
               isError: true,
@@ -407,21 +450,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "launch": {
-        const { userId, password, name: coinName, symbol, url, github, description } = args;
+        const { password, name: coinName, symbol, url, github, description } = args;
 
         if (!password) {
           return {
             content: [
               {
                 type: "text",
-                text: JSON.stringify(
-                  {
+                text: safeStringify({
                     success: false,
                     error: "Password required to sign launch request",
-                  },
-                  null,
-                  2
-                ),
+                  }),
               },
             ],
             isError: true,
@@ -429,7 +468,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         const result = await launchCoin({
-          userId,
           password,
           name: coinName,
           symbol,
@@ -443,137 +481,295 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result.apiStatus = apiStatus;
 
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
       case "my-fees": {
-        const { action = "summary", userId } = args;
-        const feesData = getMyFees(userId);
+        const { action = "summary" } = args;
 
-        if (!feesData.success) {
+        // Get wallet address
+        const walletResult = getWalletAddress();
+        if (!walletResult.success || !walletResult.address) {
           return {
-            content: [{ type: "text", text: JSON.stringify(feesData, null, 2) }],
+            content: [{ type: "text", text: safeStringify({ success: false, error: "No wallet found. Create a wallet first." }) }],
             isError: true,
           };
         }
 
-        let result;
-        switch (action) {
-          case "by-coin":
+        const creatorAddress = walletResult.address.toLowerCase();
+
+        try {
+          // Query tokens created by this user with fee data
+          const data = await queryGraphQL(`
+            query MyFees($creator: String!) {
+              tokens(
+                where: { creator: $creator }
+                orderBy: "totalEthFeesAccumulated"
+                orderDirection: "desc"
+                limit: 100
+              ) {
+                items {
+                  id
+                  totalEthFeesAccumulated
+                  totalFeesCollected
+                  totalSwapCount
+                  totalVolumeEth
+                }
+              }
+            }
+          `, { creator: creatorAddress });
+
+          const tokens = data.tokens?.items || [];
+
+          // Calculate totals
+          let totalAccumulated = BigInt(0);
+          let totalCollected = BigInt(0);
+          let totalSwaps = 0;
+
+          const coinBreakdown = tokens.map(token => {
+            const accumulated = BigInt(token.totalEthFeesAccumulated || '0');
+            const collected = BigInt(token.totalFeesCollected || '0');
+            const pending = accumulated - collected;
+
+            totalAccumulated += accumulated;
+            totalCollected += collected;
+            totalSwaps += Number(token.totalSwapCount || 0);
+
+            return {
+              tokenAddress: token.id,
+              totalEarned: formatEth(accumulated.toString()),
+              collected: formatEth(collected.toString()),
+              pending: formatEth(pending.toString()),
+              swapCount: token.totalSwapCount,
+              volume: formatEth(token.totalVolumeEth)
+            };
+          });
+
+          const totalPending = totalAccumulated - totalCollected;
+
+          let result;
+          if (action === "by-coin") {
             result = {
               success: true,
               action: "by-coin",
               description: "Earnings breakdown by coin",
-              userId,
-              coins: feesData.coins || [],
-              totalCoins: feesData.totalCoins || 0
+              wallet: walletResult.address,
+              coins: coinBreakdown,
+              totalCoins: tokens.length
             };
-            break;
-
-          case "summary":
-          default:
+          } else {
             result = {
               success: true,
               action: "summary",
               description: "Total earnings summary",
-              userId,
-              totalEarned: feesData.totalEarned || "0",
-              totalEarnedFormatted: feesData.totalEarnedFormatted || "0 ETH",
-              pendingFees: feesData.pendingFees || "0",
-              pendingFeesFormatted: feesData.pendingFeesFormatted || "0 ETH",
-              totalCoins: feesData.totalCoins || 0,
-              totalTrades: feesData.totalTrades || 0,
+              wallet: walletResult.address,
+              totalEarned: formatEth(totalAccumulated.toString()),
+              totalCollected: formatEth(totalCollected.toString()),
+              pendingFees: formatEth(totalPending.toString()),
+              totalCoins: tokens.length,
+              totalTrades: totalSwaps,
               note: "Use action='by-coin' to see per-coin breakdown. Use wallet collect-fees to claim pending fees."
             };
-            break;
-        }
+          }
 
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
+          return {
+            content: [{ type: "text", text: safeStringify(result) }],
+          };
+        } catch (err) {
+          return {
+            content: [{ type: "text", text: safeStringify({ success: false, error: `Failed to fetch fees: ${err.message}` }) }],
+            isError: true,
+          };
+        }
       }
 
       case "listings": {
-        const { action = "all", userId, query } = args;
+        const { action = "all", query } = args;
 
         try {
-          const response = await fetch(`${API_BASE_URL}/api/listing`);
-          const result = await response.json();
+          // Calculate 24h ago timestamp
+          const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - 86400;
 
-          if (!result.listings) {
-            result.listings = [];
-          }
+          let tokens = [];
+          let title = '';
+          let description = '';
 
           switch (action) {
-            case "mine":
-              if (!userId) {
+            case "mine": {
+              // Get wallet address
+              const walletResult = getWalletAddress();
+              if (!walletResult.success || !walletResult.address) {
                 return {
                   content: [{
                     type: "text",
-                    text: JSON.stringify({
+                    text: safeStringify({
                       success: false,
-                      error: "userId is required for 'mine' action"
-                    }, null, 2)
+                      error: "No wallet found. Create a wallet first."
+                    })
                   }],
                   isError: true,
                 };
               }
-              result.listings = result.listings.filter(l => l.deployerWallet === userId || l.creator === userId);
-              result.action = "mine";
-              result.description = "Your launched coins";
-              break;
 
-            case "top":
-              result.listings = result.listings
-                .sort((a, b) => parseFloat(b.marketCap || 0) - parseFloat(a.marketCap || 0))
-                .slice(0, 10);
-              result.action = "top";
-              result.description = "Top 10 coins by market cap";
-              break;
+              const creatorAddress = walletResult.address.toLowerCase();
+              const data = await queryGraphQL(`
+                query MyTokens($creator: String!) {
+                  tokens(
+                    where: { creator: $creator }
+                    orderBy: "launchTimestamp"
+                    orderDirection: "desc"
+                    limit: 50
+                  ) {
+                    items {
+                      id
+                      creator
+                      launchTimestamp
+                      totalVolumeEth
+                      totalSwapCount
+                      lastSwapTimestamp
+                      currentPrice
+                      totalEthFeesAccumulated
+                      totalFeesCollected
+                    }
+                  }
+                }
+              `, { creator: creatorAddress });
 
-            case "search":
+              tokens = data.tokens?.items || [];
+              title = 'YOUR LAUNCHED TOKENS';
+              description = `Wallet: ${walletResult.address}`;
+              break;
+            }
+
+            case "top": {
+              const data = await queryGraphQL(`
+                query TopTokens {
+                  tokens(
+                    orderBy: "totalVolumeEth"
+                    orderDirection: "desc"
+                    limit: 10
+                  ) {
+                    items {
+                      id
+                      creator
+                      launchTimestamp
+                      totalVolumeEth
+                      totalSwapCount
+                      lastSwapTimestamp
+                      currentPrice
+                    }
+                  }
+                }
+              `);
+
+              tokens = data.tokens?.items || [];
+              title = 'TOP 10 TOKENS BY VOLUME';
+              description = 'Ranked by all-time trading volume';
+              break;
+            }
+
+            case "search": {
               if (!query) {
                 return {
                   content: [{
                     type: "text",
-                    text: JSON.stringify({
+                    text: safeStringify({
                       success: false,
-                      error: "query is required for 'search' action"
-                    }, null, 2)
+                      error: "query (token address) is required for 'search' action"
+                    })
                   }],
                   isError: true,
                 };
               }
-              const searchLower = query.toLowerCase();
-              result.listings = result.listings.filter(l =>
-                l.name?.toLowerCase().includes(searchLower) ||
-                l.symbol?.toLowerCase().includes(searchLower)
-              );
-              result.action = "search";
-              result.query = query;
-              result.description = `Search results for "${query}"`;
+
+              const searchAddr = query.toLowerCase();
+              const data = await queryGraphQL(`
+                query SearchToken($id: String!) {
+                  token(id: $id) {
+                    id
+                    creator
+                    launchTimestamp
+                    totalVolumeEth
+                    totalSwapCount
+                    lastSwapTimestamp
+                    currentPrice
+                    totalEthFeesAccumulated
+                    totalFeesCollected
+                  }
+                }
+              `, { id: searchAddr });
+
+              tokens = data.token ? [data.token] : [];
+              title = 'SEARCH RESULTS';
+              description = `Query: ${query}`;
               break;
+            }
 
             case "all":
-            default:
-              result.action = "all";
-              result.description = "All launched coins";
+            default: {
+              // Get tokens with activity in the last 24 hours, ordered by most recent activity
+              const data = await queryGraphQL(`
+                query ActiveTokens {
+                  tokens(
+                    where: { lastSwapTimestamp_gte: "${twentyFourHoursAgo}" }
+                    orderBy: "lastSwapTimestamp"
+                    orderDirection: "desc"
+                    limit: 20
+                  ) {
+                    items {
+                      id
+                      creator
+                      launchTimestamp
+                      totalVolumeEth
+                      totalSwapCount
+                      lastSwapTimestamp
+                      currentPrice
+                    }
+                  }
+                }
+              `);
+
+              tokens = data.tokens?.items || [];
+              title = 'MOST ACTIVE TOKENS (24H)';
+              description = tokens.length > 0
+                ? `${tokens.length} tokens with trading activity in the last 24 hours`
+                : 'No trading activity in the last 24 hours';
               break;
+            }
           }
 
-          result.count = result.listings.length;
+          // Format the output nicely
+          const output = [];
+          output.push('═'.repeat(50));
+          output.push(`  ${title}`);
+          output.push('═'.repeat(50));
+          output.push(description);
+          output.push('');
+
+          if (tokens.length === 0) {
+            output.push('  No tokens found.');
+          } else {
+            tokens.forEach((token, idx) => {
+              output.push(formatToken(token, idx));
+              output.push('');
+            });
+          }
+
+          output.push('─'.repeat(50));
+          output.push(`Total: ${tokens.length} token(s)`);
+
           return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text", text: output.join('\n') }],
           };
         } catch (err) {
           return {
             content: [{
               type: "text",
-              text: JSON.stringify({
+              text: safeStringify({
                 success: false,
                 error: `Failed to fetch listings: ${err.message}`
-              }, null, 2)
+              })
             }],
             isError: true,
           };
@@ -585,7 +781,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify({ error: `Unknown tool: ${name}` }, null, 2),
+              text: safeStringify({ error: `Unknown tool: ${name}` }),
             },
           ],
           isError: true,
@@ -596,7 +792,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: JSON.stringify({ error: error.message }, null, 2),
+          text: safeStringify({ error: error.message }),
         },
       ],
       isError: true,
