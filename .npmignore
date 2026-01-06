@@ -1,0 +1,31 @@
+# Environment and secrets
+.env
+.env.*
+
+# Local data (wallets, etc)
+data/
+
+# Development files
+.gitignore
+.git/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test files
+test/
+*.test.js
+
+# Docs (README is included via files array)
+SECURITY.md
+
+# Lock files (let users generate their own)
+package-lock.json

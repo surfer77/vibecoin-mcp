@@ -1,6 +1,6 @@
 # Security Model
 
-This document explains how Billionaire handles your private keys and sensitive data.
+This document explains how Vibecoin handles your private keys and sensitive data.
 
 ## TL;DR
 
@@ -38,7 +38,7 @@ This document explains how Billionaire handles your private keys and sensitive d
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     BILLIONAIRE API (Remote)                    │
+│                     VIBECOIN API (Remote)                       │
 │                                                                 │
 │  Receives:                    Never receives:                   │
 │  ✓ Wallet address (public)    ✗ Private key                    │
@@ -218,7 +218,7 @@ If you find a security issue:
 
 ## FAQ
 
-### Can Billionaire steal my funds?
+### Can Vibecoin steal my funds?
 
 No. We never have access to your private key. We can only interact with your wallet through signed messages that you approve.
 

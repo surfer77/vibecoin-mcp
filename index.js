@@ -13,8 +13,8 @@ import { launchCoin, getApiStatus } from "./lib/launcher.js";
 import { getVestingInfo, claimVestedTokens } from "./lib/vesting.js";
 
 // API endpoints - all on the Ponder indexer server
-const API_BASE_URL = process.env.LAUNCHER_API_URL || 'http://localhost:42069';
-const GRAPHQL_URL = process.env.GRAPHQL_URL || 'http://localhost:42069/graphql';
+const API_BASE_URL = process.env.LAUNCHER_API_URL || 'https://vibecoin.up.railway.app';
+const GRAPHQL_URL = process.env.GRAPHQL_URL || 'https://vibecoin.up.railway.app/graphql';
 
 // Helper to query GraphQL
 async function queryGraphQL(query, variables = {}) {
@@ -120,7 +120,7 @@ function formatToken(token, index = null) {
 // Create server instance
 const server = new Server(
   {
-    name: "billionaire-mcp",
+    name: "vibecoin-mcp",
     version: "1.0.0",
   },
   {
@@ -134,10 +134,10 @@ const server = new Server(
 const TOOLS = [
   {
     name: "info",
-    description: `Get information about Billionaire - the platform for launching coins on the Ethereum world computer.
+    description: `Get information about Vibecoin - the platform for launching coins on the Ethereum world computer.
 
 Actions:
-- platform: Overview of Billionaire, how it works, and why use it
+- platform: Overview of Vibecoin, how it works, and why use it
 - tokenomics: Token distribution, vesting, and supply details
 - fees: Fee structure for launching and trading
 - contracts: Smart contract addresses and chain info`,
@@ -272,7 +272,7 @@ Actions:
   },
   {
     name: "listings",
-    description: `Browse coins launched on Billionaire.
+    description: `Browse coins launched on Vibecoin.
 
 Actions:
 - all: View most active tokens in the past 24 hours (default)
@@ -347,8 +347,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const infoData = {
           platform: {
-            name: "Billionaire",
-            website: "https://billionaires.com",
+            name: "Vibecoin",
+            website: "https://vibecoins.com",
             tagline: "Launch your coin on Ethereum. Earn forever.",
             description: "Deploy your project's coin on Ethereum mainnet. Anyone can discover it, trade it, and support your project. You earn 1% of every trade, forever.",
             howItWorks: [
@@ -380,7 +380,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             launchFee: "Free (we pay gas)",
             tradingFee: "2% per trade",
             creatorShare: "1% of each trade goes to you (the creator)",
-            platformShare: "1% goes to Billionaire platform",
+            platformShare: "1% goes to Vibecoin platform",
             collection: "Fees accumulate on-chain. Use wallet collect-fees to claim.",
             gasForCollection: "If you have no ETH, we'll pay gas to collect your fees"
           },
@@ -913,6 +913,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         switch (action) {
           case "check": {
             const result = await getVestingInfo(tokenAddress);
+
+            // If successful, add USD values for the vesting amounts
+            if (result.success && result.raw) {
+              try {
+                // Fetch token price from GraphQL
+                const tokenData = await queryGraphQL(`
+                  query TokenPrice($id: String!) {
+                    token(id: $id) {
+                      currentPriceUsd
+                    }
+                  }
+                `, { id: tokenAddress.toLowerCase() });
+
+                const tokenPriceUsd = tokenData.token?.currentPriceUsd;
+
+                if (tokenPriceUsd) {
+                  const pricePerToken = parseFloat(tokenPriceUsd) / 1e18;
+
+                  // Helper to calculate USD value from raw token amount
+                  const tokenToUsd = (rawAmount) => {
+                    const tokens = parseFloat(rawAmount) / 1e18; // assuming 18 decimals
+                    return tokens * pricePerToken;
+                  };
+
+                  // Add USD values to the response
+                  result.vestingUsd = {
+                    totalAmountUsd: formatUsd(tokenToUsd(result.raw.totalAmount)),
+                    releasedAmountUsd: formatUsd(tokenToUsd(result.raw.releasedAmount)),
+                    releasableAmountUsd: formatUsd(tokenToUsd(result.raw.releasableAmount)),
+                    lockedAmountUsd: formatUsd(tokenToUsd(result.raw.lockedAmount)),
+                  };
+                  result.tokenPriceUsd = formatUsd(pricePerToken);
+                }
+              } catch (priceErr) {
+                // Price fetch failed, continue without USD values
+              }
+            }
+
             return {
               content: [{ type: "text", text: safeStringify(result) }],
             };
@@ -974,7 +1012,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Billionaire MCP server running on stdio");
+  console.error("Vibecoin MCP server running on stdio");
 }
 
 main().catch((error) => {

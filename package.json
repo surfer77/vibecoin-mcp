@@ -1,12 +1,21 @@
 {
-  "name": "billionaire-mcp",
+  "name": "vibecoin-mcp",
   "version": "1.0.0",
-  "description": "MCP server for launching coins on Ethereum",
+  "description": "MCP server for launching coins on Ethereum via Vibecoin",
   "main": "index.js",
   "type": "module",
+  "bin": {
+    "vibecoin-mcp": "./index.js"
+  },
   "scripts": {
     "start": "node index.js"
   },
+  "files": [
+    "index.js",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "dotenv": "^17.2.3",
@@ -14,9 +23,22 @@
   },
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "ethereum",
     "crypto",
-    "coin-launcher"
+    "coin-launcher",
+    "vibecoin",
+    "claude",
+    "ai"
   ],
-  "license": "MIT"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/surfer77/vibecoin-mcp"
+  },
+  "homepage": "https://vibecoins.com",
+  "author": "Vibecoin",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

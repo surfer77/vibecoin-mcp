@@ -1,23 +1,17 @@
-# Billionaire MCP Server
+# Vibecoin MCP
 
 An MCP (Model Context Protocol) server that lets AI assistants launch coins on Ethereum and manage crypto wallets.
 
 ## What is this?
 
-This server connects AI assistants (like Claude) to the [Billionaire](https://billionaires.com) platform, enabling:
+This server connects AI assistants (like Claude) to the [Vibecoin](https://vibecoins.com) platform, enabling:
 
 - **Wallet Management** - Create encrypted Ethereum wallets, check balances, transfer ETH
-- **Coin Launching** - Deploy ERC-20 tokens on Ethereum mainnet with built-in liquidity
+- **Coin Launching** - Deploy ERC-20 tokens on Ethereum with built-in liquidity
 - **Fee Collection** - Earn 1% of every trade on coins you launch, forever
 - **Listings** - Browse and search all launched coins
 
 ## Installation
-
-```bash
-npm install
-```
-
-## Usage
 
 ### With Claude Desktop
 
@@ -26,18 +20,39 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 ```json
 {
   "mcpServers": {
-    "billionaire": {
-      "command": "node",
-      "args": ["/path/to/billionaire-mcp/index.js"]
+    "vibecoin": {
+      "command": "npx",
+      "args": ["github:surfer77/vibecoin-mcp"]
     }
   }
 }
 ```
 
-### Standalone
+### With Claude Code
 
 ```bash
+claude mcp add vibecoin -- npx github:surfer77/vibecoin-mcp
+```
+
+### Manual Installation
+
+```bash
+git clone https://github.com/surfer77/vibecoin-mcp.git
+cd vibecoin-mcp
+npm install
 npm start
+```
+
+Then add to Claude Desktop config:
+```json
+{
+  "mcpServers": {
+    "vibecoin": {
+      "command": "node",
+      "args": ["/path/to/vibecoin-mcp/index.js"]
+    }
+  }
+}
 ```
 
 ## Available Tools
@@ -62,11 +77,14 @@ npm start
 - **49%** to you (vested over 6 months)
 - **51%** to public trading pool
 
-## Environment Variables
+## Environment Variables (Optional)
+
+All defaults are pre-configured. You only need these if you want to override:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LAUNCHER_API_URL` | `http://localhost:3001` | Billionaire API endpoint |
+| `LAUNCHER_API_URL` | `https://vibecoin.up.railway.app` | Vibecoin API endpoint |
+| `RPC_URL` | Sepolia RPC | Ethereum RPC endpoint |
 
 ## Security
 
