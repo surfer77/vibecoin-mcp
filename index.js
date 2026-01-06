@@ -134,10 +134,10 @@ const server = new Server(
 const TOOLS = [
   {
     name: "info",
-    description: `Get information about Vibecoin - the platform for launching coins on the Ethereum world computer.
+    description: `Get information about Vibecoins - the platform for launching coins on the Ethereum world computer.
 
 Actions:
-- platform: Overview of Vibecoin, how it works, and why use it
+- platform: Overview of Vibecoins, how it works, and why use it
 - tokenomics: Token distribution, vesting, and supply details
 - fees: Fee structure for launching and trading
 - contracts: Smart contract addresses and chain info`,
@@ -164,9 +164,7 @@ Actions:
 - get: Get your wallet address (no password needed)
 - balance: Check your ETH balance
 - transfer: Send ETH to another address (IRREVERSIBLE - shows warning before sending)
-- collect-fees: Claim accumulated trading fees from the contract
-
-INSTRUCTIONS FOR AI: A wallet is REQUIRED before launching a coin. If no wallet exists, don't ask the user if they want to create one - just prompt them for a password to create it. Explain that this password encrypts their wallet and must never be forgotten.`,
+- collect-fees: Claim accumulated trading fees from the contract`,
     inputSchema: {
       type: "object",
       properties: {
@@ -210,16 +208,7 @@ Requirements:
 Optional (but encouraged):
 - URL: Project website
 - GitHub: Source code repository
-- Description: What your project does
-
-INSTRUCTIONS FOR AI: When a user wants to launch a coin, ALWAYS prompt them for ALL fields in a friendly conversational way:
-1. First ask for the coin name and symbol (required)
-2. Then ask for the website URL (can be left empty)
-3. Then ask for the GitHub repo (can be left empty)
-4. Then ask for a brief description (can be left empty)
-5. Finally, ask for their wallet password to sign the transaction
-
-Make it clear which fields are optional and that they can skip them by leaving them empty. Be encouraging and helpful throughout the process.`,
+- Description: What your project does`,
     inputSchema: {
       type: "object",
       properties: {
@@ -272,7 +261,7 @@ Actions:
   },
   {
     name: "listings",
-    description: `Browse coins launched on Vibecoin.
+    description: `Browse coins launched on Vibecoins.
 
 Actions:
 - all: View most active tokens in the past 24 hours (default)
@@ -308,16 +297,7 @@ Actions:
 - check: View vesting status for a specific token (requires tokenAddress)
 - claim: Claim all available vested tokens (requires tokenAddress and password)
 
-The vesting schedule releases tokens linearly over 6 months from the coin launch date.
-
-INSTRUCTIONS FOR AI: When a user wants to check or claim vested tokens but doesn't provide a token address:
-1. First use the 'listings' tool with action='mine' to fetch all tokens the user has launched
-2. Present the user's tokens with their names, symbols, and addresses
-3. If the user has only one token, you can proceed directly with that token
-4. If the user has multiple tokens, ask which token they want to check/claim from
-5. Then call the vesting tool with the selected tokenAddress
-
-This ensures a smooth user experience - users don't need to remember their token addresses.`,
+The vesting schedule releases tokens linearly over 6 months from the coin launch date.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -356,7 +336,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const infoData = {
           platform: {
-            name: "Vibecoin",
+            name: "Vibecoins",
             website: "https://vibecoins.com",
             tagline: "Launch your coin on Ethereum. Earn forever.",
             description: "Deploy your project's coin on Ethereum mainnet. Anyone can discover it, trade it, and support your project. You earn 1% of every trade, forever.",
@@ -389,7 +369,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             launchFee: "Free (we pay gas)",
             tradingFee: "2% per trade",
             creatorShare: "1% of each trade goes to you (the creator)",
-            platformShare: "1% goes to Vibecoin platform",
+            platformShare: "1% goes to Vibecoins platform",
             collection: "Fees accumulate on-chain. Use wallet collect-fees to claim.",
             gasForCollection: "If you have no ETH, we'll pay gas to collect your fees"
           },

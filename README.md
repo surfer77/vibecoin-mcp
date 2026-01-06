@@ -1,10 +1,10 @@
-# Vibecoin MCP
+# Vibecoins MCP
 
 An MCP (Model Context Protocol) server that lets AI assistants launch coins on Ethereum and manage crypto wallets.
 
 ## What is this?
 
-This server connects AI assistants (like Claude) to the [Vibecoin](https://vibecoins.com) platform, enabling:
+This server connects AI assistants (like Claude) to the [Vibecoins](https://vibecoins.com) platform, enabling:
 
 - **Wallet Management** - Create encrypted Ethereum wallets, check balances, transfer ETH
 - **Coin Launching** - Deploy ERC-20 tokens on Ethereum with built-in liquidity
@@ -83,7 +83,7 @@ All defaults are pre-configured. You only need these if you want to override:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LAUNCHER_API_URL` | `https://vibecoin.up.railway.app` | Vibecoin API endpoint |
+| `LAUNCHER_API_URL` | `https://vibecoin.up.railway.app` | Vibecoins API endpoint |
 | `RPC_URL` | Sepolia RPC | Ethereum RPC endpoint |
 
 ## Security

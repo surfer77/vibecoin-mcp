@@ -1,7 +1,7 @@
 {
   "name": "vibecoin-mcp",
   "version": "1.0.0",
-  "description": "MCP server for launching coins on Ethereum via Vibecoin",
+  "description": "MCP server for launching coins on Ethereum via Vibecoins",
   "main": "index.js",
   "type": "module",
   "bin": {
@@ -36,7 +36,7 @@
     "url": "https://github.com/surfer77/vibecoin-mcp"
   },
   "homepage": "https://vibecoins.com",
-  "author": "Vibecoin",
+  "author": "Vibecoins",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
