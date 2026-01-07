@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import 'dotenv/config';
+import "dotenv/config";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -8,19 +8,27 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { createWallet, getWalletAddress, getBalance, transfer, collectFees } from "./lib/wallet.js";
+import {
+  createWallet,
+  getWalletAddress,
+  getBalance,
+  transfer,
+  collectFees,
+} from "./lib/wallet.js";
 import { launchCoin, getApiStatus } from "./lib/launcher.js";
 import { getVestingInfo, claimVestedTokens } from "./lib/vesting.js";
 
 // API endpoints - all on the Ponder indexer server
-const API_BASE_URL = process.env.LAUNCHER_API_URL || 'https://vibecoin.up.railway.app';
-const GRAPHQL_URL = process.env.GRAPHQL_URL || 'https://vibecoin.up.railway.app/graphql';
+const API_BASE_URL =
+  process.env.LAUNCHER_API_URL || "https://vibecoin.up.railway.app";
+const GRAPHQL_URL =
+  process.env.GRAPHQL_URL || "https://vibecoin.up.railway.app/graphql";
 
 // Helper to query GraphQL
 async function queryGraphQL(query, variables = {}) {
   const response = await fetch(GRAPHQL_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
   });
   const result = await response.json();
@@ -32,11 +40,11 @@ async function queryGraphQL(query, variables = {}) {
 
 // Format wei to ETH with nice display
 function formatEth(wei) {
-  if (!wei) return '0 ETH';
+  if (!wei) return "0 ETH";
   // Safely convert BigInt to number by using string conversion
-  const weiStr = typeof wei === 'bigint' ? wei.toString() : String(wei);
+  const weiStr = typeof wei === "bigint" ? wei.toString() : String(wei);
   const eth = parseFloat(weiStr) / 1e18;
-  if (eth === 0 || isNaN(eth)) return '0 ETH';
+  if (eth === 0 || isNaN(eth)) return "0 ETH";
   if (eth < 0.0001) return `${eth.toExponential(2)} ETH`;
   if (eth < 1) return `${eth.toFixed(4)} ETH`;
   return `${eth.toFixed(2)} ETH`;
@@ -44,7 +52,7 @@ function formatEth(wei) {
 
 // JSON replacer to handle BigInt serialization
 function jsonReplacer(key, value) {
-  if (typeof value === 'bigint') {
+  if (typeof value === "bigint") {
     return value.toString();
   }
   return value;
@@ -57,9 +65,10 @@ function safeStringify(obj, indent = 2) {
 
 // Format timestamp to readable date
 function formatTimestamp(ts) {
-  if (!ts) return 'Never';
+  if (!ts) return "Never";
   // Handle BigInt timestamps safely
-  const tsNum = typeof ts === 'bigint' ? parseInt(ts.toString(), 10) : Number(ts);
+  const tsNum =
+    typeof ts === "bigint" ? parseInt(ts.toString(), 10) : Number(ts);
   const date = new Date(tsNum * 1000);
   const now = new Date();
   const diffMs = now - date;
@@ -67,7 +76,7 @@ function formatTimestamp(ts) {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'Just now';
+  if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
@@ -76,11 +85,11 @@ function formatTimestamp(ts) {
 
 // Format price (stored as scaled integer)
 function formatPrice(price) {
-  if (!price) return '$0.00';
+  if (!price) return "$0.00";
   // Safely convert BigInt to number by using string conversion
-  const priceStr = typeof price === 'bigint' ? price.toString() : String(price);
+  const priceStr = typeof price === "bigint" ? price.toString() : String(price);
   const p = parseFloat(priceStr) / 1e18;
-  if (p === 0) return '$0.00';
+  if (p === 0) return "$0.00";
   if (p < 0.000001) return `$${p.toExponential(2)}`;
   if (p < 0.01) return `$${p.toFixed(6)}`;
   if (p < 1) return `$${p.toFixed(4)}`;
@@ -89,10 +98,10 @@ function formatPrice(price) {
 
 // Format USD value for display
 function formatUsd(value) {
-  if (!value) return '$0.00';
-  const valStr = typeof value === 'bigint' ? value.toString() : String(value);
+  if (!value) return "$0.00";
+  const valStr = typeof value === "bigint" ? value.toString() : String(value);
   const v = parseFloat(valStr);
-  if (v === 0 || isNaN(v)) return '$0.00';
+  if (v === 0 || isNaN(v)) return "$0.00";
   if (v < 0.01) return `$${v.toFixed(6)}`;
   if (v < 1) return `$${v.toFixed(4)}`;
   if (v < 1000) return `$${v.toFixed(2)}`;
@@ -102,19 +111,22 @@ function formatUsd(value) {
 
 // Format a token for nice display
 function formatToken(token, index = null) {
-  const prefix = index !== null ? `${index + 1}. ` : '';
-  const nameDisplay = token.name && token.symbol
-    ? `${token.name} (${token.symbol})`
-    : `${token.id.slice(0, 10)}...${token.id.slice(-8)}`;
+  const prefix = index !== null ? `${index + 1}. ` : "";
+  const nameDisplay =
+    token.name && token.symbol
+      ? `${token.name} (${token.symbol})`
+      : `${token.id.slice(0, 10)}...${token.id.slice(-8)}`;
 
   const lines = [
     `${prefix}${nameDisplay}`,
-    `   Volume: ${formatUsd(token.totalVolumeUsd)} | Swaps: ${token.totalSwapCount}`,
+    `   Volume: ${formatUsd(token.totalVolumeUsd)} | Swaps: ${
+      token.totalSwapCount
+    }`,
     `   Price: ${formatUsd(token.currentPriceUsd)}`,
     `   Last Trade: ${formatTimestamp(token.lastSwapTimestamp)}`,
     `   Launched: ${formatTimestamp(token.launchTimestamp)}`,
   ];
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 // Create server instance
@@ -147,7 +159,8 @@ Actions:
         action: {
           type: "string",
           enum: ["platform", "tokenomics", "fees", "contracts"],
-          description: "What info to retrieve: platform (overview), tokenomics (token details), fees (fee structure), contracts (addresses)",
+          description:
+            "What info to retrieve: platform (overview), tokenomics (token details), fees (fee structure), contracts (addresses)",
         },
       },
       required: [],
@@ -175,7 +188,8 @@ Actions:
         },
         password: {
           type: "string",
-          description: "Wallet password (required for: create, transfer, collect-fees)",
+          description:
+            "Wallet password (required for: create, transfer, collect-fees)",
         },
         toAddress: {
           type: "string",
@@ -234,7 +248,8 @@ Optional (but encouraged):
         },
         description: {
           type: "string",
-          description: "Brief description of your project (optional but encouraged)",
+          description:
+            "Brief description of your project (optional but encouraged)",
         },
       },
       required: ["password", "name", "symbol"],
@@ -253,7 +268,8 @@ Actions:
         action: {
           type: "string",
           enum: ["summary", "by-coin"],
-          description: "View type: summary (totals) or by-coin (per-coin breakdown)",
+          description:
+            "View type: summary (totals) or by-coin (per-coin breakdown)",
         },
       },
       required: [],
@@ -274,7 +290,8 @@ Actions:
         action: {
           type: "string",
           enum: ["all", "mine", "top", "search"],
-          description: "Browse mode: all (most active 24h), mine (your coins), top (by volume), search (by address)",
+          description:
+            "Browse mode: all (most active 24h), mine (your coins), top (by volume), search (by address)",
         },
         query: {
           type: "string",
@@ -304,7 +321,8 @@ The vesting schedule releases tokens linearly over 6 months from the coin launch
         action: {
           type: "string",
           enum: ["check", "claim"],
-          description: "Action to perform: check (view vesting status) or claim (claim vested tokens)",
+          description:
+            "Action to perform: check (view vesting status) or claim (claim vested tokens)",
         },
         tokenAddress: {
           type: "string",
@@ -339,48 +357,55 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             name: "Vibecoins",
             website: "https://vibecoins.com",
             tagline: "Launch your coin on Ethereum. Earn forever.",
-            description: "Deploy your project's coin on Ethereum mainnet. Anyone can discover it, trade it, and support your project. You earn 1% of every trade, forever.",
+            description:
+              "Deploy your project's coin on Ethereum mainnet. Anyone can discover it, trade it, and support your project. You earn 1% of every trade, forever.",
             howItWorks: [
               "1. Create a wallet - this stores your private key locally and receives your trading fees",
               "2. Launch your coin - choose a name and symbol, sign the transaction",
               "3. Deployment - your coin is deployed to Ethereum mainnet with a bonding curve",
               "4. Discovery - the metaverse can find and trade your coin immediately",
-              "5. Earn - you receive 1% of every trade, sent directly to your wallet"
+              "5. Earn - you receive 1% of every trade, sent directly to your wallet",
             ],
-            quickStart: "Use the 'wallet' tool to create a wallet, then 'launch' to deploy your coin."
+            quickStart:
+              "Use the 'wallet' tool to create a wallet, then 'launch' to deploy your coin.",
           },
           tokenomics: {
             totalSupply: "1,000,000,000 (1 billion tokens)",
             distribution: {
               creator: "49% (490,000,000 tokens)",
-              publicPool: "51% (510,000,000 tokens)"
+              publicPool: "51% (510,000,000 tokens)",
             },
             vesting: {
               creatorTokens: "6 months linear vesting",
-              releaseSchedule: "Tokens unlock proportionally each block over 6 months",
-              claim: "Use wallet collect-fees action to claim vested tokens"
+              releaseSchedule:
+                "Tokens unlock proportionally each block over 6 months",
+              claim: "Use wallet collect-fees action to claim vested tokens",
             },
             bondingCurve: {
-              phase1: "First 250M tokens at fixed $0.01 per token",
-              phase2: "Remaining tokens on bonding curve (price increases with demand)"
-            }
+              phase1: "First 250M tokens at fixed $0.001 per token",
+              phase2:
+                "Remaining tokens on bonding curve (price increases with demand)",
+            },
           },
           fees: {
             launchFee: "Free (we pay gas)",
             tradingFee: "2% per trade",
             creatorShare: "1% of each trade goes to you (the creator)",
             platformShare: "1% goes to Vibecoins platform",
-            collection: "Fees accumulate on-chain. Use wallet collect-fees to claim.",
-            gasForCollection: "If you have no ETH, we'll pay gas to collect your fees"
+            collection:
+              "Fees accumulate on-chain. Use wallet collect-fees to claim.",
+            gasForCollection:
+              "If you have no ETH, we'll pay gas to collect your fees",
           },
           contracts: {
             network: "Ethereum Mainnet",
             chainId: 1,
             factoryAddress: "Deployed after mainnet launch",
             feeHookAddress: "Deployed after mainnet launch",
-            uniswapV4Integration: "Coins launch with native Uniswap v4 liquidity",
-            verified: "All contracts verified on Etherscan"
-          }
+            uniswapV4Integration:
+              "Coins launch with native Uniswap v4 liquidity",
+            verified: "All contracts verified on Etherscan",
+          },
         };
 
         const result = infoData[action] || infoData.platform;
@@ -400,9 +425,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   {
                     type: "text",
                     text: safeStringify({
-                        success: false,
-                        error: "Password required to create wallet. This password encrypts your wallet where fees will be sent. IMPORTANT: Choose a password you will NEVER forget - there is NO recovery option. If you lose your password, your wallet and funds are gone forever!",
-                      }),
+                      success: false,
+                      error:
+                        "Password required to create wallet. This password encrypts your wallet where fees will be sent. IMPORTANT: Choose a password you will NEVER forget - there is NO recovery option. If you lose your password, your wallet and funds are gone forever!",
+                    }),
                   },
                 ],
                 isError: true,
@@ -410,25 +436,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
             const result = await createWallet(password);
             return {
-              content: [
-                { type: "text", text: safeStringify(result) },
-              ],
+              content: [{ type: "text", text: safeStringify(result) }],
             };
           }
           case "get": {
             const result = getWalletAddress();
             return {
-              content: [
-                { type: "text", text: safeStringify(result) },
-              ],
+              content: [{ type: "text", text: safeStringify(result) }],
             };
           }
           case "balance": {
             const result = await getBalance();
             return {
-              content: [
-                { type: "text", text: safeStringify(result) },
-              ],
+              content: [{ type: "text", text: safeStringify(result) }],
             };
           }
           case "transfer": {
@@ -438,9 +458,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   {
                     type: "text",
                     text: safeStringify({
-                        success: false,
-                        error: "Password required to transfer funds",
-                      }),
+                      success: false,
+                      error: "Password required to transfer funds",
+                    }),
                   },
                 ],
                 isError: true,
@@ -453,9 +473,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   {
                     type: "text",
                     text: safeStringify({
-                        success: false,
-                        error: "toAddress and amount are required for transfer",
-                      }),
+                      success: false,
+                      error: "toAddress and amount are required for transfer",
+                    }),
                   },
                 ],
                 isError: true,
@@ -464,12 +484,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // Return warning first, requiring confirmation
             const transferResult = await transfer(password, toAddress, amount);
             if (transferResult.success) {
-              transferResult.warning = "⚠️ This transfer is IRREVERSIBLE. The funds have been sent and cannot be recovered.";
+              transferResult.warning =
+                "⚠️ This transfer is IRREVERSIBLE. The funds have been sent and cannot be recovered.";
             }
             return {
-              content: [
-                { type: "text", text: safeStringify(transferResult) },
-              ],
+              content: [{ type: "text", text: safeStringify(transferResult) }],
             };
           }
           case "collect-fees": {
@@ -479,9 +498,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   {
                     type: "text",
                     text: safeStringify({
-                        success: false,
-                        error: "Password required to collect fees",
-                      }),
+                      success: false,
+                      error: "Password required to collect fees",
+                    }),
                   },
                 ],
                 isError: true,
@@ -489,9 +508,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
             const collectResult = await collectFees(password, GRAPHQL_URL);
             return {
-              content: [
-                { type: "text", text: safeStringify(collectResult) },
-              ],
+              content: [{ type: "text", text: safeStringify(collectResult) }],
             };
           }
           default:
@@ -508,7 +525,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "launch": {
-        const { password, name: coinName, symbol, url, github, description } = args;
+        const {
+          password,
+          name: coinName,
+          symbol,
+          url,
+          github,
+          description,
+        } = args;
 
         if (!password) {
           return {
@@ -516,9 +540,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               {
                 type: "text",
                 text: safeStringify({
-                    success: false,
-                    error: "Password required to sign launch request",
-                  }),
+                  success: false,
+                  error: "Password required to sign launch request",
+                }),
               },
             ],
             isError: true,
@@ -550,7 +574,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const walletResult = getWalletAddress();
         if (!walletResult.success || !walletResult.address) {
           return {
-            content: [{ type: "text", text: safeStringify({ success: false, error: "No wallet found. Create a wallet first." }) }],
+            content: [
+              {
+                type: "text",
+                text: safeStringify({
+                  success: false,
+                  error: "No wallet found. Create a wallet first.",
+                }),
+              },
+            ],
             isError: true,
           };
         }
@@ -559,7 +591,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         try {
           // Query tokens created by this user with fee data, plus ETH price
-          const data = await queryGraphQL(`
+          const data = await queryGraphQL(
+            `
             query MyFees($creator: String!) {
               tokens(
                 where: { creator: $creator }
@@ -582,7 +615,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 lastUpdated
               }
             }
-          `, { creator: creatorAddress });
+          `,
+            { creator: creatorAddress }
+          );
 
           const tokens = data.tokens?.items || [];
           const ethPrice = data.ethPriceCache?.priceUsd || 0;
@@ -590,7 +625,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // Helper to convert ETH (wei) to USD
           const ethToUsd = (weiAmount) => {
             if (!weiAmount || !ethPrice) return null;
-            const weiStr = typeof weiAmount === 'bigint' ? weiAmount.toString() : String(weiAmount);
+            const weiStr =
+              typeof weiAmount === "bigint"
+                ? weiAmount.toString()
+                : String(weiAmount);
             const eth = parseFloat(weiStr) / 1e18;
             return eth * ethPrice;
           };
@@ -600,20 +638,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           let totalCollected = BigInt(0);
           let totalSwaps = 0;
 
-          const coinBreakdown = tokens.map(token => {
-            const accumulated = BigInt(token.totalEthFeesAccumulated || '0');
-            const collected = BigInt(token.totalFeesCollected || '0');
+          const coinBreakdown = tokens.map((token) => {
+            const accumulated = BigInt(token.totalEthFeesAccumulated || "0");
+            const collected = BigInt(token.totalFeesCollected || "0");
             const pending = accumulated - collected;
 
             totalAccumulated += accumulated;
             totalCollected += collected;
             // Safely convert BigInt to number
             const swapCount = token.totalSwapCount || 0;
-            totalSwaps += typeof swapCount === 'bigint' ? parseInt(swapCount.toString(), 10) : Number(swapCount);
+            totalSwaps +=
+              typeof swapCount === "bigint"
+                ? parseInt(swapCount.toString(), 10)
+                : Number(swapCount);
 
-            const tokenName = token.name && token.symbol
-              ? `${token.name} (${token.symbol})`
-              : token.id;
+            const tokenName =
+              token.name && token.symbol
+                ? `${token.name} (${token.symbol})`
+                : token.id;
 
             const result = {
               token: tokenName,
@@ -622,7 +664,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               collected: formatEth(collected.toString()),
               pending: formatEth(pending.toString()),
               swapCount: token.totalSwapCount,
-              volume: formatUsd(token.totalVolumeUsd)
+              volume: formatUsd(token.totalVolumeUsd),
             };
 
             // Add USD values if ETH price is available
@@ -645,7 +687,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               description: "Earnings breakdown by coin",
               wallet: walletResult.address,
               coins: coinBreakdown,
-              totalCoins: tokens.length
+              totalCoins: tokens.length,
             };
             if (ethPrice) {
               result.ethPriceUsd = ethPrice;
@@ -661,7 +703,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               pendingFees: formatEth(totalPending.toString()),
               totalCoins: tokens.length,
               totalTrades: totalSwaps,
-              note: "Use action='by-coin' to see per-coin breakdown. Use wallet collect-fees to claim pending fees."
+              note: "Use action='by-coin' to see per-coin breakdown. Use wallet collect-fees to claim pending fees.",
             };
             // Add USD values if ETH price is available
             if (ethPrice) {
@@ -677,7 +719,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         } catch (err) {
           return {
-            content: [{ type: "text", text: safeStringify({ success: false, error: `Failed to fetch fees: ${err.message}` }) }],
+            content: [
+              {
+                type: "text",
+                text: safeStringify({
+                  success: false,
+                  error: `Failed to fetch fees: ${err.message}`,
+                }),
+              },
+            ],
             isError: true,
           };
         }
@@ -691,8 +741,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - 86400;
 
           let tokens = [];
-          let title = '';
-          let description = '';
+          let title = "";
+          let description = "";
 
           switch (action) {
             case "mine": {
@@ -700,19 +750,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               const walletResult = getWalletAddress();
               if (!walletResult.success || !walletResult.address) {
                 return {
-                  content: [{
-                    type: "text",
-                    text: safeStringify({
-                      success: false,
-                      error: "No wallet found. Create a wallet first."
-                    })
-                  }],
+                  content: [
+                    {
+                      type: "text",
+                      text: safeStringify({
+                        success: false,
+                        error: "No wallet found. Create a wallet first.",
+                      }),
+                    },
+                  ],
                   isError: true,
                 };
               }
 
               const creatorAddress = walletResult.address.toLowerCase();
-              const data = await queryGraphQL(`
+              const data = await queryGraphQL(
+                `
                 query MyTokens($creator: String!) {
                   tokens(
                     where: { creator: $creator }
@@ -735,10 +788,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     }
                   }
                 }
-              `, { creator: creatorAddress });
+              `,
+                { creator: creatorAddress }
+              );
 
               tokens = data.tokens?.items || [];
-              title = 'YOUR LAUNCHED TOKENS';
+              title = "YOUR LAUNCHED TOKENS";
               description = `Wallet: ${walletResult.address}`;
               break;
             }
@@ -767,27 +822,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               `);
 
               tokens = data.tokens?.items || [];
-              title = 'TOP 10 TOKENS BY VOLUME';
-              description = 'Ranked by all-time trading volume';
+              title = "TOP 10 TOKENS BY VOLUME";
+              description = "Ranked by all-time trading volume";
               break;
             }
 
             case "search": {
               if (!query) {
                 return {
-                  content: [{
-                    type: "text",
-                    text: safeStringify({
-                      success: false,
-                      error: "query (token address) is required for 'search' action"
-                    })
-                  }],
+                  content: [
+                    {
+                      type: "text",
+                      text: safeStringify({
+                        success: false,
+                        error:
+                          "query (token address) is required for 'search' action",
+                      }),
+                    },
+                  ],
                   isError: true,
                 };
               }
 
               const searchAddr = query.toLowerCase();
-              const data = await queryGraphQL(`
+              const data = await queryGraphQL(
+                `
                 query SearchToken($id: String!) {
                   token(id: $id) {
                     id
@@ -803,10 +862,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     totalFeesCollected
                   }
                 }
-              `, { id: searchAddr });
+              `,
+                { id: searchAddr }
+              );
 
               tokens = data.token ? [data.token] : [];
-              title = 'SEARCH RESULTS';
+              title = "SEARCH RESULTS";
               description = `Query: ${query}`;
               break;
             }
@@ -838,46 +899,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               `);
 
               tokens = data.tokens?.items || [];
-              title = 'MOST ACTIVE TOKENS (24H)';
-              description = tokens.length > 0
-                ? `${tokens.length} tokens with trading activity in the last 24 hours`
-                : 'No trading activity in the last 24 hours';
+              title = "MOST ACTIVE TOKENS (24H)";
+              description =
+                tokens.length > 0
+                  ? `${tokens.length} tokens with trading activity in the last 24 hours`
+                  : "No trading activity in the last 24 hours";
               break;
             }
           }
 
           // Format the output nicely
           const output = [];
-          output.push('═'.repeat(50));
+          output.push("═".repeat(50));
           output.push(`  ${title}`);
-          output.push('═'.repeat(50));
+          output.push("═".repeat(50));
           output.push(description);
-          output.push('');
+          output.push("");
 
           if (tokens.length === 0) {
-            output.push('  No tokens found.');
+            output.push("  No tokens found.");
           } else {
             tokens.forEach((token, idx) => {
               output.push(formatToken(token, idx));
-              output.push('');
+              output.push("");
             });
           }
 
-          output.push('─'.repeat(50));
+          output.push("─".repeat(50));
           output.push(`Total: ${tokens.length} token(s)`);
 
           return {
-            content: [{ type: "text", text: output.join('\n') }],
+            content: [{ type: "text", text: output.join("\n") }],
           };
         } catch (err) {
           return {
-            content: [{
-              type: "text",
-              text: safeStringify({
-                success: false,
-                error: `Failed to fetch listings: ${err.message}`
-              })
-            }],
+            content: [
+              {
+                type: "text",
+                text: safeStringify({
+                  success: false,
+                  error: `Failed to fetch listings: ${err.message}`,
+                }),
+              },
+            ],
             isError: true,
           };
         }
@@ -888,13 +952,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         if (!tokenAddress) {
           return {
-            content: [{
-              type: "text",
-              text: safeStringify({
-                success: false,
-                error: "tokenAddress is required. Use the 'listings' tool with action='mine' to see your launched tokens."
-              })
-            }],
+            content: [
+              {
+                type: "text",
+                text: safeStringify({
+                  success: false,
+                  error:
+                    "tokenAddress is required. Use the 'listings' tool with action='mine' to see your launched tokens.",
+                }),
+              },
+            ],
             isError: true,
           };
         }
@@ -907,13 +974,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (result.success && result.raw) {
               try {
                 // Fetch token price from GraphQL
-                const tokenData = await queryGraphQL(`
+                const tokenData = await queryGraphQL(
+                  `
                   query TokenPrice($id: String!) {
                     token(id: $id) {
                       currentPriceUsd
                     }
                   }
-                `, { id: tokenAddress.toLowerCase() });
+                `,
+                  { id: tokenAddress.toLowerCase() }
+                );
 
                 const tokenPriceUsd = tokenData.token?.currentPriceUsd;
 
@@ -928,10 +998,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
                   // Add USD values to the response
                   result.vestingUsd = {
-                    totalAmountUsd: formatUsd(tokenToUsd(result.raw.totalAmount)),
-                    releasedAmountUsd: formatUsd(tokenToUsd(result.raw.releasedAmount)),
-                    releasableAmountUsd: formatUsd(tokenToUsd(result.raw.releasableAmount)),
-                    lockedAmountUsd: formatUsd(tokenToUsd(result.raw.lockedAmount)),
+                    totalAmountUsd: formatUsd(
+                      tokenToUsd(result.raw.totalAmount)
+                    ),
+                    releasedAmountUsd: formatUsd(
+                      tokenToUsd(result.raw.releasedAmount)
+                    ),
+                    releasableAmountUsd: formatUsd(
+                      tokenToUsd(result.raw.releasableAmount)
+                    ),
+                    lockedAmountUsd: formatUsd(
+                      tokenToUsd(result.raw.lockedAmount)
+                    ),
                   };
                   result.tokenPriceUsd = formatUsd(pricePerToken);
                 }
@@ -947,13 +1025,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           case "claim": {
             if (!password) {
               return {
-                content: [{
-                  type: "text",
-                  text: safeStringify({
-                    success: false,
-                    error: "Password required to claim vested tokens"
-                  })
-                }],
+                content: [
+                  {
+                    type: "text",
+                    text: safeStringify({
+                      success: false,
+                      error: "Password required to claim vested tokens",
+                    }),
+                  },
+                ],
                 isError: true,
               };
             }
@@ -964,10 +1044,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
           default:
             return {
-              content: [{
-                type: "text",
-                text: safeStringify({ error: `Unknown vesting action: ${action}. Use 'check' or 'claim'.` })
-              }],
+              content: [
+                {
+                  type: "text",
+                  text: safeStringify({
+                    error: `Unknown vesting action: ${action}. Use 'check' or 'claim'.`,
+                  }),
+                },
+              ],
               isError: true,
             };
         }
