@@ -117,8 +117,12 @@ function formatToken(token, index = null) {
       ? `${token.name} (${token.symbol})`
       : `${token.id.slice(0, 10)}...${token.id.slice(-8)}`;
 
+  const etherscanUrl = `https://etherscan.io/token/${token.id}`;
+
   const lines = [
     `${prefix}${nameDisplay}`,
+    `   Contract: ${token.id}`,
+    `   Etherscan: ${etherscanUrl}`,
     `   Volume: ${formatUsd(token.totalVolumeUsd)} | Swaps: ${
       token.totalSwapCount
     }`,
